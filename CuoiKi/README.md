@@ -1,6 +1,15 @@
 # Cuối kỳ – Parallel Prefix Sum Using OpenMP: Implementation and Performance Evaluation
 
-Môn **Tính toán song song** – Nhóm: Bùi Xuân Chung, Lê Văn Cường, Đào Ngọc Cường.
+Môn **Tính toán song song** – Trường ĐH Khoa học Tự nhiên, ĐHQG Hà Nội.
+GVHD: Nguyễn Hải Vinh, Mạc Đăng Trường.
+
+| Thành viên | MSSV |
+|---|---|
+| Bùi Xuân Chung | 23001838 |
+| Lê Văn Cường | 23001842 |
+| Đào Ngọc Cường | 23001841 |
+
+Kế hoạch chi tiết (bố cục báo cáo, slide, các việc cần làm): [KeHoach.md](KeHoach.md)
 
 ## Cấu trúc thư mục
 
