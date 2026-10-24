@@ -1,0 +1,15 @@
+\babel@toc {vietnamese}{}\relax 
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {2.1}{\ignorespaces Mô hình fork--join của OpenMP.}}{6}{figure.caption.16}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {3.1}{\ignorespaces Thuật toán Hillis--Steele trên 8 phần tử: 3 bước, mỗi bước phần tử \(i\) cộng thêm phần tử \(i - 2^{d-1}\) (mũi tên). Ô tô màu là các phần tử được cập nhật. Hàng cuối là inclusive scan.}}{9}{figure.caption.19}%
+\contentsline {figure}{\numberline {3.2}{\ignorespaces Pha up-sweep: ở tầng \(d\), phần tử \(k + 2^{d+1} - 1\) cộng thêm phần tử \(k + 2^d - 1\). Sau \(\log _2 n = 3\) bước, \(x[7] = 25\) là tổng toàn mảng.}}{11}{figure.caption.20}%
+\contentsline {figure}{\numberline {3.3}{\ignorespaces Pha down-sweep: con trái nhận giá trị của cha, con phải nhận cha cộng con trái cũ. Hàng cuối là exclusive scan \([0, 3, 4, 11, 11, 15, 16, 22]\), khớp với ví dụ của Blelloch~\blx@tocontentsinit {0}\cite [Hình 1.4]{blelloch1990}.}}{11}{figure.caption.21}%
+\contentsline {figure}{\numberline {3.4}{\ignorespaces Scan chia khối với \(n = 12\), \(p = 4\) (ví dụ theo~\blx@tocontentsinit {0}\cite [Hình 1.6]{blelloch1990}, ở dạng inclusive). Pha 1 và pha 3 hoàn toàn song song; pha 2 chỉ xử lý \(p\) số.}}{13}{figure.caption.23}%
+\contentsline {figure}{\numberline {3.5}{\ignorespaces Blocked-opt: mảng chia thành các tile gồm \(p\) khối \(B\) phần tử (ở đây \(p = 4\), luồng T\(t\) xử lý khối thứ \(t\) của mỗi tile). Ba pha thực hiện trong từng tile; tổng của tile được cộng dồn vào \emph {carry} cho tile kế tiếp.}}{13}{figure.caption.26}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }

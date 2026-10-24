@@ -1,0 +1,316 @@
+\chapter{Cài đặt bằng OpenMP}
+\label{ch:impl}
+
+Chương này mô tả cách các thuật toán ở \cref{ch:algorithms} được hiện thực bằng C11 và OpenMP:
+cấu trúc mã nguồn (\cref{sec:impl-arch}), chi tiết từng phiên bản (\cref{sec:impl-versions}),
+các kỹ thuật tối ưu (\cref{sec:impl-opt}), kiểm thử (\cref{sec:impl-test}) và công cụ đo hiệu
+năng (\cref{sec:impl-bench}). Toàn bộ mã nguồn có trong \cref{app:code} và trên kho GitHub của
+nhóm.
+
+\section{Kiến trúc mã nguồn}
+\label{sec:impl-arch}
+
+\begin{table}[H]
+\centering
+\caption{Các tệp mã nguồn.}
+\label{tab:files}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabularx}{\textwidth}{>{\ttfamily}p{4cm}X}
+\toprule
+\textnormal{\textbf{Tệp}} & \textbf{Nội dung} \\
+\midrule
+src/scan.h & Giao diện chung: kiểu \code{elem\_t}, cấu trúc vùng làm việc \code{scan\_ws},
+nguyên mẫu các hàm scan, bảng đăng ký thuật toán. \\
+src/scan.c & Cài đặt sáu phiên bản scan và kernel \code{copy} tham chiếu. \\
+src/test\_scan.c & Bộ kiểm thử tính đúng: so sánh mọi phiên bản với bản tuần tự. \\
+src/bench.c & Chương trình đo hiệu năng, xuất CSV. \\
+src/compact.c & Ứng dụng stream compaction dựa trên scan. \\
+scripts/run\_all.sh & Chạy toàn bộ thực nghiệm, ghi thông tin máy và kết quả thô. \\
+scripts/plots.py & Tổng hợp trung vị, vẽ biểu đồ và sinh bảng LaTeX. \\
+Makefile & Biên dịch với \code{gcc -O3 -march=native -fopenmp}. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Giao diện thống nhất.} Mọi phiên bản có cùng chữ ký (\cref{lst:iface}), cho phép
+chương trình đo và bộ kiểm thử duyệt qua một bảng các con trỏ hàm mà không cần mã riêng cho từng
+thuật toán. Bộ nhớ phụ (buffer cho Hillis--Steele và Blelloch) được cấp phát \emph{trước} khi đo
+qua \code{scan\_ws\_create}, để thời gian đo không bao gồm chi phí \code{malloc} và lỗi trang.
+
+\begin{lstlisting}[caption={Giao diện chung trong \texttt{scan.h} (rút gọn).},label={lst:iface}]
+typedef int64_t elem_t;
+typedef struct {
+    elem_t *tmp;      // buffer phụ >= next_pow2(n) phần tử
+    size_t  tmp_cap;
+    size_t  block;    // kích thước khối B cho blocked_opt
+} scan_ws;
+
+typedef void (*scan_fn)(const elem_t *in, elem_t *out, size_t n, scan_ws *ws);
+
+void scan_seq          (const elem_t *in, elem_t *out, size_t n, scan_ws *ws);
+void scan_hillis_steele(const elem_t *in, elem_t *out, size_t n, scan_ws *ws);
+void scan_blelloch     (const elem_t *in, elem_t *out, size_t n, scan_ws *ws);
+void scan_blocked      (const elem_t *in, elem_t *out, size_t n, scan_ws *ws);
+void scan_blocked_opt  (const elem_t *in, elem_t *out, size_t n, scan_ws *ws);
+void scan_omp          (const elem_t *in, elem_t *out, size_t n, scan_ws *ws);
+\end{lstlisting}
+
+\paragraph{Cấp phát bộ nhớ.} Mọi mảng được cấp phát bằng \code{aligned\_alloc(64, \dots)}, căn
+lề theo dòng cache, để các khối của luồng bắt đầu đúng biên dòng cache và trình biên dịch có thể
+dùng lệnh nạp vector căn lề.
+
+\section{Cài đặt các phiên bản}
+\label{sec:impl-versions}
+
+\subsection{Hillis--Steele}
+
+Cài đặt (\cref{lst:hs}) mở \emph{một} vùng \code{parallel} duy nhất bao trọn mọi bước, tránh chi
+phí fork--join \(\log_2 n\) lần. Mỗi bước tách làm hai vòng \code{for}: vòng \(i < \mathit{off}\)
+chỉ sao chép, vòng \(i \ge \mathit{off}\) thực hiện phép cộng. Việc tách bỏ nhánh \code{if} trong
+thân vòng lặp giúp trình biên dịch vector hóa được. Vòng thứ nhất dùng \code{nowait} vì hai vòng
+ghi vào hai vùng rời nhau của \code{b}. Việc hoán đổi con trỏ đặt trong \code{single}: mọi luồng
+thấy cùng giá trị \code{a}, \code{b} vì đây là biến dùng chung khai báo ngoài vùng song song, và
+rào chắn ngầm định cuối \code{single} đảm bảo không luồng nào bắt đầu bước sau khi hoán đổi chưa
+xong.
+
+\begin{lstlisting}[caption={Hillis--Steele với bộ đệm kép.},label={lst:hs}]
+elem_t *a = out, *b = ws->tmp;
+#pragma omp parallel
+{
+    #pragma omp for schedule(static)
+    for (size_t i = 0; i < n; i++) a[i] = in[i];
+
+    for (size_t off = 1; off < n; off <<= 1) {
+        #pragma omp for schedule(static) nowait
+        for (size_t i = 0; i < off; i++) b[i] = a[i];
+        #pragma omp for schedule(static)
+        for (size_t i = off; i < n; i++) b[i] = a[i - off] + a[i];
+        #pragma omp single
+        { elem_t *t = a; a = b; b = t; }      // barrier ngầm định
+    }
+    if (a != out) {
+        #pragma omp for schedule(static)
+        for (size_t i = 0; i < n; i++) out[i] = a[i];
+    }
+}
+\end{lstlisting}
+
+\subsection{Blelloch}
+
+Phiên bản Blelloch (\cref{lst:blelloch}) làm việc trên buffer \code{ws->tmp} có kích thước
+\(m = 2^{\lceil\log_2 n\rceil}\); phần đệm \(x[n..m-1]\) được gán 0 (phần tử đơn vị) nên không
+ảnh hưởng kết quả. Vòng lặp theo \code{k} dùng bước nhảy \code{stride} thay vì nhân chỉ số, để số
+lần lặp của mỗi tầng là \(m/\mathit{stride}\) và \code{schedule(static)} chia đều chúng. Ở các
+tầng trên cùng, số lần lặp ít hơn số luồng, nên phần lớn luồng không có việc nhưng vẫn phải chờ
+ở rào chắn ngầm định cuối mỗi vòng \code{for}. Bước cuối cộng \code{in[i]} để chuyển exclusive
+thành inclusive.
+
+\begin{lstlisting}[caption={Blelloch: up-sweep và down-sweep tại chỗ.},label={lst:blelloch}]
+const size_t m = next_pow2(n);
+elem_t *x = ws->tmp;
+#pragma omp parallel
+{
+    #pragma omp for schedule(static)
+    for (size_t i = 0; i < m; i++) x[i] = (i < n) ? in[i] : 0;
+
+    for (size_t stride = 2; stride <= m; stride <<= 1) {      // up-sweep
+        const size_t half = stride >> 1;
+        #pragma omp for schedule(static)
+        for (size_t k = stride - 1; k < m; k += stride)
+            x[k] += x[k - half];
+    }
+    #pragma omp single
+    x[m - 1] = 0;
+    for (size_t stride = m; stride >= 2; stride >>= 1) {      // down-sweep
+        const size_t half = stride >> 1;
+        #pragma omp for schedule(static)
+        for (size_t k = stride - 1; k < m; k += stride) {
+            elem_t t    = x[k - half];
+            x[k - half] = x[k];
+            x[k]       += t;
+        }
+    }
+    #pragma omp for schedule(static)
+    for (size_t i = 0; i < n; i++) out[i] = x[i] + in[i];    // -> inclusive
+}
+\end{lstlisting}
+
+\subsection{Blocked}
+
+Phiên bản chia khối cơ bản (\cref{lst:blocked}) không dùng \omp{for} mà tự tính khoảng
+\([lo, hi)\) của mỗi luồng từ \code{omp\_get\_thread\_num()}. Lý do là pha 1 và pha 3 phải dùng
+\emph{cùng một} cách chia; tự chia giúp điều này luôn đúng, không phụ thuộc vào cách thư viện cài
+đặt \code{schedule(static)}. Mảng \code{sums} có \(p + 1\) phần tử, \code{sums[0] = 0}, nên sau khi
+scan tuần tự thì \code{sums[t]} chính là offset của luồng \(t\). Thuật toán chỉ cần hai điểm đồng
+bộ: \code{barrier} sau pha 1 và rào chắn ngầm định cuối \code{single}.
+
+\begin{lstlisting}[caption={Blocked: ba pha, mỗi luồng một khối liên tiếp.},label={lst:blocked}]
+elem_t sums[MAX_THREADS + 1];
+#pragma omp parallel
+{
+    const int    p   = omp_get_num_threads();
+    const int    t   = omp_get_thread_num();
+    const size_t len = (n + p - 1) / p;
+    const size_t lo  = min(t * len, n), hi = min(lo + len, n);
+
+    elem_t s = 0;                                   // Pha 1
+    for (size_t i = lo; i < hi; i++) s += in[i];
+    sums[t + 1] = s;
+    #pragma omp barrier
+
+    #pragma omp single                              // Pha 2
+    { sums[0] = 0;
+      for (int i = 1; i <= p; i++) sums[i] += sums[i - 1]; }
+
+    s = sums[t];                                    // Pha 3
+    for (size_t i = lo; i < hi; i++) { s += in[i]; out[i] = s; }
+}
+\end{lstlisting}
+
+\subsection{Blocked-opt}
+
+Phiên bản tối ưu (\cref{lst:blockedopt}) hiện thực ý tưởng chia tile ở \cref{sec:alg-tiled}.
+Ba điểm khác so với Blocked:
+\begin{enumerate}
+  \item \textbf{Vòng lặp tile:} mỗi luồng xử lý khối thứ \(t\) của mỗi tile; mỗi khối \(B\)
+        phần tử (mặc định \(B = 2^{15}\), tức 256~KiB, vừa L2 của cả P-core lẫn E-core).
+  \item \textbf{Không có \code{single}:} thay vì một luồng scan mảng tổng khối rồi phát lại cho
+        các luồng khác, \emph{mỗi luồng tự cộng} các tổng khối đứng trước nó (\(\Oh(p)\) phép
+        cộng, \(p \le 12\)) và tự cập nhật bản sao \code{carry} riêng. Nhờ đó mỗi tile chỉ cần
+        \textbf{một} rào chắn.
+  \item \textbf{Bộ đệm kép cho tổng khối:} tile chẵn ghi vào \code{part[0]}, tile lẻ ghi vào
+        \code{part[1]}. Một luồng nhanh đã sang tile kế tiếp sẽ ghi vào buffer kia, không ghi đè
+        dữ liệu mà luồng chậm còn đang đọc. Đây là lý do có thể bỏ rào chắn thứ hai.
+\end{enumerate}
+
+\begin{lstlisting}[caption={Blocked-opt: tile vừa L2, một barrier mỗi tile.},label={lst:blockedopt}]
+typedef struct { elem_t v; char pad[64 - sizeof(elem_t)]; } padded_elem;
+static padded_elem part[2][MAX_THREADS];          // đệm 64 byte, bộ đệm kép
+
+#pragma omp parallel
+{
+    const int p = omp_get_num_threads(), t = omp_get_thread_num();
+    const size_t tile = B * p;
+    elem_t carry = 0;  int buf = 0;
+    for (size_t base = 0; base < n; base += tile) {
+        const size_t lo = min(base + t * B, n), hi = min(lo + B, n);
+        elem_t s = 0;
+        #pragma omp simd reduction(+:s)             // Pha 1 (AVX2)
+        for (size_t i = lo; i < hi; i++) s += in[i];
+        part[buf][t].v = s;
+        #pragma omp barrier
+        elem_t off = carry, tot = 0;                // Pha 2: mỗi luồng tự tính
+        for (int j = 0; j < p; j++) {
+            elem_t v = part[buf][j].v;
+            if (j < t) off += v;
+            tot += v;
+        }
+        carry += tot;
+        s = off;                                    // Pha 3: dữ liệu còn trong L2
+        for (size_t i = lo; i < hi; i++) { s += in[i]; out[i] = s; }
+        buf ^= 1;
+    }
+}
+\end{lstlisting}
+
+\paragraph{Tính đúng của việc bỏ rào chắn thứ hai.} Xét luồng \(u\) đã xong tile \(k\) và bắt
+đầu tile \(k+1\), ghi vào \code{part[(k+1) mod 2]}. Buffer này không bị đọc ở tile \(k\). Luồng
+\(u\) chỉ có thể sang tile \(k+2\), tức ghi lại vào \code{part[k mod 2]}, sau khi vượt qua rào
+chắn của tile \(k+1\). Mà rào chắn đó chỉ mở khi \emph{mọi} luồng đã tới, tức mọi luồng đã đọc
+xong \code{part[k mod 2]} ở pha 2 của tile \(k\). Vậy không có tranh chấp dữ liệu.
+
+\subsection{Chỉ thị \texttt{omp scan}}
+
+Phiên bản này chỉ gồm vài dòng như \cref{lst:omp-scan-intro}. Trong quá trình cài đặt, nhóm gặp
+hai vấn đề với GCC 15.2:
+\begin{enumerate}
+  \item Ban đầu nhóm dùng \code{parallel for simd reduction(inscan,+:s)} để kết hợp đa luồng và
+        vector hóa. Với \(n\) lớn, chương trình bị \textbf{tràn stack}: AddressSanitizer chỉ ra
+        GCC cấp phát một mảng tạm kích thước \(\Oh(n)\) trên stack cho phần \code{simd}. Nhóm bỏ
+        \code{simd} để khắc phục.
+  \item Khi \(n = 0\) và \(p > 1\), libgomp \textbf{ghi đè bộ nhớ} (lỗi
+        ``\emph{stack smashing detected}''). Bộ kiểm thử phát hiện lỗi này; nhóm thêm kiểm tra
+        \code{if (n == 0) return;} ở đầu hàm.
+\end{enumerate}
+Hai vấn đề này cho thấy chỉ thị \code{scan} tuy tiện lợi nhưng còn khá mới, và cài đặt trong
+trình biên dịch phổ biến vẫn có lỗi ở trường hợp biên. Đây cũng là lý do bộ kiểm thử phải bao
+gồm các kích thước đặc biệt như 0 và 1.
+
+\section{Các kỹ thuật tối ưu}
+\label{sec:impl-opt}
+
+\begin{table}[H]
+\centering
+\caption{Tổng hợp các kỹ thuật tối ưu đã áp dụng.}
+\label{tab:opts}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3.6cm}X>{\raggedright\arraybackslash}p{2.6cm}}
+\toprule
+\textbf{Kỹ thuật} & \textbf{Mục đích} & \textbf{Áp dụng cho} \\
+\midrule
+Một vùng \code{parallel} duy nhất & Tránh fork--join lặp lại ở mỗi bước/tầng. & Mọi phiên bản \\
+Tách vòng lặp bỏ nhánh & Cho phép trình biên dịch vector hóa (AVX2). & Hillis--Steele \\
+\code{omp simd reduction} & Vector hóa pha tính tổng khối: 4 phần tử int64 mỗi lệnh. &
+Blocked-opt \\
+Chia tile vừa L2 & Pha 3 đọc lại dữ liệu từ cache: lưu lượng DRAM từ \(24n\) xuống \(16n\) byte.
+& Blocked-opt \\
+Đệm 64 byte (padding) & Chống false sharing trên mảng tổng khối. & Blocked-opt \\
+Bộ đệm kép tổng khối & Bỏ một rào chắn mỗi tile. & Blocked-opt \\
+Căn lề 64 byte & Khối bắt đầu ở biên dòng cache; nạp vector căn lề. & Mọi mảng \\
+First-touch song song & Trang nhớ được ánh xạ trước khi đo; không tính lỗi trang. & Mọi mảng \\
+Cấp phát trước buffer & Không tính \code{malloc} vào thời gian đo. & Hillis--Steele, Blelloch \\
+\code{-O3 -march=native} & Tối ưu mạnh và dùng tập lệnh của CPU đang chạy (AVX2). & Toàn bộ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Vì sao không vector hóa được pha 3?} Vòng \code{s += in[i]; out[i] = s;} có phụ thuộc
+mang qua vòng lặp nên trình biên dịch không tự vector hóa. Về lý thuyết có thể dùng scan trong
+thanh ghi SIMD bằng các lệnh dịch và cộng (in-register scan), nhưng vì scan đã bị giới hạn bởi
+băng thông bộ nhớ (\cref{sec:roofline}), lợi ích không đáng kể. Thực nghiệm xác nhận bản tuần tự
+vô hướng đã đạt khoảng 13~GB/s, gần bằng kernel copy đơn luồng.
+
+\section{Kiểm thử tính đúng}
+\label{sec:impl-test}
+
+Chương trình \code{test\_scan} so sánh từng phần tử kết quả của mọi phiên bản với
+\code{scan\_seq} trên một lưới tham số:
+\begin{itemize}
+  \item \textbf{Kích thước} \(n \in \{0, 1, 2, 3, 5, 8, 13, 64, 100, 1000, 4096, 4099, 65537,
+        1000003, 2^{20}+7\}\): gồm trường hợp rỗng, một phần tử, lũy thừa của 2, số nguyên tố và
+        số lớn hơn lũy thừa của 2 một chút (buộc Blelloch phải đệm gần gấp đôi).
+  \item \textbf{Số luồng} \(p \in \{1, 2, 3, 4, 7, 8, 12\}\): gồm số lẻ và số không chia hết
+        \(n\), để kiểm tra khối cuối ngắn hơn hoặc rỗng.
+  \item \textbf{Kích thước khối} \(B \in \{1, 3, 1024, 32768\}\) cho Blocked-opt: \(B = 1\) tạo
+        rất nhiều tile, kiểm tra kỹ cơ chế bộ đệm kép và carry.
+  \item \textbf{Dữ liệu} ngẫu nhiên trong \([-1000, 1000]\), có cả số âm.
+  \item Kiểm tra riêng ví dụ của Blelloch: \([3,1,7,0,4,1,6,3] \mapsto [3,4,11,11,15,16,22,25]\).
+\end{itemize}
+Tổng cộng \textbf{945 trường hợp kiểm thử, tất cả đều đạt}. Ngoài ra, mã được biên dịch với
+\code{-fsanitize=address} để phát hiện truy cập ngoài vùng nhớ; cách này đã giúp tìm ra hai lỗi
+của \code{omp scan} kể trên. Chương trình đo hiệu năng cũng tự kiểm tra kết quả sau lần chạy làm
+nóng và dừng ngay nếu sai.
+
+\section{Công cụ và quy trình đo hiệu năng}
+\label{sec:impl-bench}
+
+Chương trình \code{bench} nhận danh sách thuật toán, kích thước, số luồng, số lần lặp và kích
+thước khối, rồi in mỗi lần đo thành một dòng CSV \code{algo,n,threads,block,rep,time\_s}. Với mỗi
+cấu hình, quy trình như sau:
+\begin{enumerate}
+  \item Cấp phát và khởi tạo song song các mảng (first-touch), tính kết quả tham chiếu.
+  \item Đặt số luồng bằng \code{omp\_set\_num\_threads(p)}.
+  \item Chạy \textbf{2 lần làm nóng} (warm-up): đánh thức nhóm luồng, nạp cache lệnh, đưa CPU lên
+        xung nhịp cao. Kiểm tra kết quả.
+  \item Chạy \textbf{10 lần đo}, mỗi lần bao quanh bởi \code{omp\_get\_wtime()}.
+\end{enumerate}
+Script \code{run\_all.sh} gọi \code{bench} cho sáu nhóm thực nghiệm, ghi lại thông tin máy
+(\code{lscpu}, phiên bản GCC, cờ biên dịch) cùng kết quả. Script \code{plots.py} lấy
+\textbf{trung vị} của 10 lần đo cho mỗi cấu hình (ít nhạy với giá trị ngoại lai hơn trung bình,
+vốn hay xuất hiện trên laptop do hệ điều hành và điều chỉnh xung nhịp), tính speedup theo
+\eqref{eq:speedup}, băng thông hiệu dụng \(16n/T\) và vẽ biểu đồ. Nhờ quy trình tự động, toàn bộ
+\cref{ch:experiments} có thể được tái tạo bằng hai lệnh:
+\begin{lstlisting}[language=bash,numbers=none]
+bash scripts/run_all.sh      # khoảng 20 phút
+python scripts/plots.py      # bảng + biểu đồ vào report/
+\end{lstlisting}

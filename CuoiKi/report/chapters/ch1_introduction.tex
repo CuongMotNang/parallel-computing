@@ -1,0 +1,108 @@
+\chapter{Giới thiệu}
+\label{ch:intro}
+
+\section{Bối cảnh}
+
+Trong gần hai thập kỷ trở lại đây, tốc độ xung nhịp của bộ xử lý gần như dừng lại ở mức
+3--5~GHz do giới hạn về công suất tiêu thụ và tản nhiệt (hiện tượng \emph{power wall}).
+Thay vì tăng tốc một nhân, các nhà sản xuất chuyển sang tích hợp nhiều nhân trên cùng một chip:
+ngay cả một máy tính xách tay phổ thông ngày nay cũng có từ 8 đến 16 luồng phần cứng, kèm theo
+các đơn vị tính toán vector (SIMD) rộng 256 hoặc 512 bit~\cite{hennessy2019}. Hệ quả là hiệu
+năng phần mềm không còn ``tự động'' tăng theo thế hệ phần cứng; muốn tận dụng tài nguyên tính
+toán, lập trình viên buộc phải \emph{song song hóa} chương trình.
+
+Song song hóa dễ nhất với các bài toán mà mỗi phần tử dữ liệu được xử lý độc lập (cộng hai
+vector, áp bộ lọc lên từng điểm ảnh) -- loại bài toán thường gọi là \emph{embarrassingly
+parallel}. Tuy nhiên, rất nhiều thuật toán quan trọng chứa \emph{phụ thuộc dữ liệu} giữa các
+bước lặp, khiến việc chia việc cho nhiều luồng không còn hiển nhiên. Ví dụ điển hình, đồng
+thời là chủ đề của báo cáo này, là phép \textbf{tính tổng tiền tố} (\emph{prefix sum},
+hay \emph{scan}):
+\begin{equation}
+  y_i \;=\; x_0 \oplus x_1 \oplus \cdots \oplus x_i, \qquad i = 0, 1, \ldots, n-1,
+  \label{eq:intro-scan}
+\end{equation}
+trong đó \(\oplus\) là phép toán hai ngôi có tính kết hợp (thường là phép cộng). Cài đặt tuần
+tự của~\eqref{eq:intro-scan} chỉ là vòng lặp \(y_i = y_{i-1} \oplus x_i\); mỗi bước phụ thuộc
+trực tiếp vào bước liền trước. Thoạt nhìn, phép toán này có vẻ \emph{bản chất tuần tự}.
+
+Blelloch~\cite{blelloch1990} đã chỉ ra rằng điều đó không đúng: tổng tiền tố là một ví dụ
+điển hình về phép tính trông có vẻ tuần tự nhưng lại có thuật toán song song hiệu quả. Hơn
+nữa, scan được xem là một trong những \emph{khối xây dựng} (building block) cơ bản nhất của
+thuật toán song song, có vai trò tương tự phép duyệt mảng trong thuật toán tuần tự. Rất nhiều
+bài toán -- sắp xếp cơ số, sắp xếp nhanh, lọc phần tử (stream compaction), cấp phát bộ nhớ
+động, phân tích từ vựng, giải hệ truy hồi, dựng histogram, bảng tổng vùng trong xử lý ảnh --
+có thể quy về một hoặc vài lần gọi scan~\cite{blelloch1990,harris2007,sengupta2007}. Vì vậy,
+một cài đặt scan song song nhanh có ý nghĩa thực tiễn lớn: nó trực tiếp tăng tốc cả một lớp
+ứng dụng.
+
+Phần lớn tài liệu kinh điển về scan song song tập trung vào mô hình lý thuyết
+PRAM~\cite{blelloch1990,ladner1980} hoặc vào GPU với hàng nghìn
+luồng~\cite{harris2007,merrill2016}. Trên CPU đa nhân -- nơi số luồng chỉ khoảng chục, có hệ
+thống bộ nhớ đệm nhiều cấp và băng thông bộ nhớ hạn chế -- các đánh đổi lại rất khác: một thuật
+toán ``tối ưu'' trên lý thuyết chưa chắc đã nhanh trong thực tế. Đây chính là động lực của đề
+tài: \emph{cài đặt các thuật toán scan song song bằng OpenMP trên CPU đa nhân và đánh giá hiệu
+năng một cách có hệ thống}.
+
+\section{Phát biểu bài toán}
+
+\paragraph{Đầu vào.} Mảng \(x = [x_0, x_1, \ldots, x_{n-1}]\) gồm \(n\) số nguyên 64 bit lưu
+liên tiếp trong bộ nhớ, và số luồng \(p\).
+
+\paragraph{Đầu ra.} Mảng \(y\) cùng kích thước thỏa mãn~\eqref{eq:intro-scan} với \(\oplus\)
+là phép cộng (\emph{inclusive scan}). Kết quả song song phải \textbf{trùng khớp tuyệt đối} với
+kết quả tuần tự.
+
+\paragraph{Yêu cầu.}
+\begin{enumerate}
+  \item Cài đặt bằng C và OpenMP các thuật toán scan song song tiêu biểu: Hillis--Steele,
+        Blelloch (up-sweep/down-sweep), scan chia khối và chỉ thị \code{scan} của OpenMP 5.0.
+  \item Kiểm chứng tính đúng trên nhiều kích thước dữ liệu và số luồng.
+  \item Đánh giá hiệu năng: thời gian chạy, speedup, hiệu suất, khả năng mở rộng (strong/weak
+        scaling), băng thông bộ nhớ đạt được; phân tích nguyên nhân của các kết quả.
+\end{enumerate}
+
+Việc chọn số nguyên 64 bit thay vì số thực là có chủ đích: phép cộng dấu phẩy động
+\emph{không} có tính kết hợp tuyệt đối, nên thứ tự cộng khác nhau giữa các thuật toán sẽ cho
+sai khác nhỏ, gây khó cho kiểm thử. Với số nguyên, mọi sai khác dù chỉ một bit đều là lỗi.
+
+\section{Mục tiêu và phạm vi}
+
+\begin{itemize}
+  \item \textbf{Lý thuyết:} trình bày định nghĩa, các thuật toán scan song song kinh điển cùng
+        phân tích theo mô hình work--span; làm rõ khái niệm \emph{work-efficiency} và vì sao nó
+        quan trọng khi số luồng nhỏ hơn nhiều so với kích thước dữ liệu.
+  \item \textbf{Cài đặt:} xây dựng một thư viện nhỏ gồm sáu phiên bản scan với giao diện thống
+        nhất, kèm bộ kiểm thử tự động và chương trình đo hiệu năng.
+  \item \textbf{Thực nghiệm:} đo đạc trên một CPU lai (hybrid) hiện đại, đối chiếu với giới hạn
+        băng thông bộ nhớ để trả lời câu hỏi: \emph{scan song song trên CPU nhanh được đến đâu
+        và bị giới hạn bởi điều gì?}
+  \item \textbf{Ứng dụng:} minh họa dùng scan để song song hóa bài toán lọc phần tử.
+\end{itemize}
+
+\noindent\textbf{Phạm vi.} Đề tài giới hạn trong mô hình bộ nhớ chia sẻ trên một nút tính toán,
+sử dụng OpenMP. GPU (CUDA) và bộ nhớ phân tán (MPI) chỉ được đề cập ở mức tổng quan.
+
+\section{Đóng góp của nhóm}
+
+\begin{enumerate}
+  \item Cài đặt và kiểm thử sáu phiên bản scan bằng OpenMP, trong đó phiên bản tối ưu
+        \emph{Blocked-opt} kết hợp chia tile vừa bộ nhớ đệm L2, chống false sharing và vector
+        hóa, giảm lưu lượng bộ nhớ từ 24 xuống 16 byte cho mỗi phần tử.
+  \item Xây dựng quy trình đo hiệu năng có thể tái lập (script tự động, nhiều lần lặp, lấy
+        trung vị, ghi lại cấu hình máy) và công cụ sinh biểu đồ, bảng LaTeX tự động.
+  \item Phân tích kết quả dựa trên mô hình roofline: với dữ liệu lớn, scan là bài toán
+        \emph{giới hạn bởi băng thông bộ nhớ}, nên speedup bị chặn bởi tỉ số băng thông đa
+        luồng/đơn luồng chứ không phải bởi số nhân.
+  \item Ghi nhận các vấn đề thực tế: thuật toán ``đẹp'' trên lý thuyết (Hillis--Steele,
+        Blelloch) chậm hơn cả bản tuần tự trên CPU; chỉ thị \code{omp scan} của GCC lỗi khi
+        vòng lặp rỗng; ảnh hưởng của kiến trúc lai P-core/E-core tới cân bằng tải.
+\end{enumerate}
+
+\section{Cấu trúc báo cáo}
+
+\Cref{ch:background} trình bày cơ sở lý thuyết: định nghĩa scan, mô hình work--span, các định
+luật giới hạn tăng tốc, mô hình roofline, chuẩn OpenMP và đặc điểm kiến trúc CPU.
+\Cref{ch:algorithms} trình bày chi tiết các thuật toán scan song song, phân tích độ phức tạp và
+chứng minh tính đúng. \Cref{ch:impl} mô tả cài đặt bằng OpenMP, kỹ thuật tối ưu và kiểm thử.
+\Cref{ch:experiments} trình bày môi trường, phương pháp và kết quả thực nghiệm kèm phân tích.
+\Cref{ch:conclusion} tổng kết, nêu hạn chế và hướng phát triển.

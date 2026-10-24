@@ -1,0 +1,350 @@
+\chapter{Cơ sở lý thuyết}
+\label{ch:background}
+
+Chương này trình bày các khái niệm nền tảng được sử dụng trong toàn bộ báo cáo: định nghĩa
+hình thức của phép scan (\cref{sec:scan-def}), mô hình phân tích thuật toán song song
+work--span (\cref{sec:workspan}), các định luật giới hạn tăng tốc và mô hình roofline
+(\cref{sec:laws}), chuẩn lập trình OpenMP (\cref{sec:openmp}) và các đặc điểm kiến trúc CPU đa
+nhân ảnh hưởng trực tiếp tới hiệu năng (\cref{sec:arch}).
+
+\section{Phép tính tổng tiền tố}
+\label{sec:scan-def}
+
+\begin{definition}[Inclusive scan]
+Cho phép toán hai ngôi \(\oplus\) có tính kết hợp trên tập \(X\) và dãy
+\(x = [x_0, x_1, \ldots, x_{n-1}] \in X^n\). \emph{Inclusive scan} của \(x\) là dãy
+\[
+  \operatorname{scan}(x) = [\,x_0,\; x_0 \oplus x_1,\; \ldots,\; x_0 \oplus x_1 \oplus \cdots \oplus x_{n-1}\,].
+\]
+\end{definition}
+
+\begin{definition}[Exclusive scan / prescan]
+Nếu \(\oplus\) có phần tử đơn vị \(I\), \emph{exclusive scan} (Blelloch gọi là
+\emph{prescan}~\cite{blelloch1990}) của \(x\) là
+\[
+  \operatorname{prescan}(x) = [\,I,\; x_0,\; x_0 \oplus x_1,\; \ldots,\; x_0 \oplus \cdots \oplus x_{n-2}\,].
+\]
+\end{definition}
+
+\begin{example}
+Với \(\oplus = +\), \(I = 0\) và \(x = [3, 1, 7, 0, 4, 1, 6, 3]\):
+\[
+  \operatorname{scan}(x) = [3, 4, 11, 11, 15, 16, 22, 25], \qquad
+  \operatorname{prescan}(x) = [0, 3, 4, 11, 11, 15, 16, 22].
+\]
+\end{example}
+
+Hai dạng có thể chuyển đổi cho nhau với chi phí \(\Oh(n)\) và hoàn toàn song song:
+\(\operatorname{scan}(x)_i = \operatorname{prescan}(x)_i \oplus x_i\), và ngược lại
+\(\operatorname{prescan}(x)_i = \operatorname{scan}(x)_{i-1}\) với \(\operatorname{prescan}(x)_0 = I\).
+Báo cáo này dùng inclusive scan làm đầu ra chuẩn cho mọi phiên bản; thuật toán Blelloch tự
+nhiên sinh ra exclusive scan và được chuyển đổi ở bước cuối.
+
+\paragraph{Vai trò của tính kết hợp.} Mọi thuật toán scan song song đều dựa trên việc
+\emph{nhóm lại} các phép toán theo thứ tự khác với thứ tự tuần tự, ví dụ
+\((x_0 \oplus x_1) \oplus (x_2 \oplus x_3)\) thay vì \(((x_0 \oplus x_1) \oplus x_2) \oplus x_3\).
+Điều này chỉ hợp lệ khi \(\oplus\) kết hợp. Tính giao hoán \emph{không} cần thiết: các thuật toán
+giữ nguyên thứ tự trái--phải của toán hạng. Do đó scan áp dụng được cho nhiều phép toán:
+cộng, nhân, \(\max\), \(\min\), AND/OR logic, nhân ma trận, hợp các hàm affine
+\(f(y) = ay + b\) (dùng để giải hệ truy hồi tuyến tính bậc nhất)~\cite{blelloch1990}.
+
+\paragraph{Vấn đề với số thực.} Phép cộng dấu phẩy động IEEE~754 chỉ \emph{gần} kết hợp:
+\((a + b) + c\) và \(a + (b + c)\) có thể khác nhau ở bit cuối do làm tròn. Thuật toán song song
+vì vậy cho kết quả hơi khác bản tuần tự; sai số tích lũy của cách nhóm theo cây thậm chí thường
+\emph{nhỏ hơn} cách cộng tuần tự. Báo cáo dùng số nguyên 64 bit để có thể so sánh chính xác
+từng bit.
+
+\paragraph{Thuật toán tuần tự.} Cài đặt tuần tự rất đơn giản (\cref{alg:seq}): đúng \(n-1\)
+phép cộng, đây là số phép toán tối thiểu cần thiết, đồng thời là mốc để đánh giá các thuật toán
+song song. Tuy nhiên vòng lặp có \emph{phụ thuộc mang qua vòng lặp} (loop-carried dependency):
+bước \(i\) cần kết quả bước \(i-1\), nên không thể đơn giản thêm \omp{parallel for}.
+
+\begin{algorithm}[H]
+\caption{Inclusive scan tuần tự}
+\label{alg:seq}
+\KwIn{mảng \(x[0..n-1]\)}
+\KwOut{mảng \(y[0..n-1]\), \(y_i = \sum_{j \le i} x_j\)}
+\(s \gets 0\)\;
+\For{\(i \gets 0\) \KwTo \(n-1\)}{
+  \(s \gets s + x[i]\)\;
+  \(y[i] \gets s\)\;
+}
+\end{algorithm}
+
+\section{Mô hình phân tích thuật toán song song}
+\label{sec:workspan}
+
+\subsection{Mô hình PRAM}
+
+Mô hình \emph{Parallel Random Access Machine} (PRAM) gồm \(p\) bộ xử lý đồng bộ cùng truy cập
+một bộ nhớ chung; mỗi bước, mọi bộ xử lý thực hiện một lệnh. Biến thể EREW (Exclusive Read,
+Exclusive Write) cấm hai bộ xử lý cùng đọc hoặc cùng ghi một ô nhớ trong một bước. Blelloch
+phân tích các thuật toán scan trên EREW PRAM~\cite{blelloch1990}. PRAM bỏ qua chi phí đồng bộ,
+độ trễ và băng thông bộ nhớ -- những yếu tố lại chiếm ưu thế trên phần cứng thật, như ta sẽ
+thấy ở \cref{ch:experiments}.
+
+\subsection{Work, span và định lý Brent}
+
+Một thuật toán song song được mô tả bằng một \emph{đồ thị phụ thuộc} có hướng không chu trình
+(DAG), mỗi nút là một phép toán, mỗi cạnh là một phụ thuộc dữ liệu. Hai đại lượng đặc trưng:
+\begin{itemize}
+  \item \textbf{Work} \(\Work(n)\): tổng số nút -- thời gian chạy trên một bộ xử lý, \(T_1\).
+  \item \textbf{Span} (hay \emph{depth}) \(\Span(n)\): độ dài đường đi dài nhất trong DAG --
+        thời gian chạy khi có vô hạn bộ xử lý, \(T_\infty\).
+\end{itemize}
+Tỉ số \(\Work/\Span\) gọi là \emph{độ song song} (parallelism) -- số bộ xử lý tối đa có thể tận
+dụng hiệu quả. Với \(p\) bộ xử lý, hiển nhiên \(T_p \ge \max(\Work/p,\; \Span)\).
+
+\begin{theorem}[Brent~\cite{brent1974}]
+Một thuật toán có work \(\Work\) và span \(\Span\) có thể được thực thi trên \(p\) bộ xử lý trong
+thời gian
+\begin{equation}
+  T_p \;\le\; \frac{\Work}{p} + \Span.
+  \label{eq:brent}
+\end{equation}
+\end{theorem}
+
+Định lý Brent cho thấy hai mục tiêu thiết kế: giảm \(\Span\) để có nhiều song song, và
+\emph{không tăng} \(\Work\) so với thuật toán tuần tự tốt nhất.
+
+\begin{definition}[Work-efficient]
+Thuật toán song song gọi là \emph{work-efficient} nếu \(\Work(n) = \Oh(T_{\text{seq}}(n))\),
+trong đó \(T_{\text{seq}}\) là thời gian của thuật toán tuần tự tốt nhất.
+\end{definition}
+
+Work-efficiency đặc biệt quan trọng khi \(p \ll n\) -- trường hợp luôn gặp trên CPU (\(p\) cỡ
+10, \(n\) cỡ \(10^8\)). Khi đó số hạng \(\Work/p\) trong~\eqref{eq:brent} chiếm ưu thế
+tuyệt đối; một thuật toán có \(\Work = \Oh(n \log n)\) làm nhiều việc hơn bản tuần tự
+\(\log_2 n\) lần (khoảng 27 lần với \(n = 2^{27}\)), nên cần ít nhất \(\log_2 n\) bộ xử lý chỉ để
+hòa vốn. Đây là lý do thuật toán Hillis--Steele, dù có span tốt nhất, lại chậm nhất trong thực
+nghiệm (\cref{sec:exp-strong}).
+
+\subsection{Speedup và hiệu suất}
+
+Với \(T_{\text{seq}}\) là thời gian của \emph{bản tuần tự tốt nhất} (không phải bản song song
+chạy 1 luồng) và \(T_p\) là thời gian với \(p\) luồng:
+\begin{equation}
+  S_p = \frac{T_{\text{seq}}}{T_p}, \qquad E_p = \frac{S_p}{p}.
+  \label{eq:speedup}
+\end{equation}
+\(S_p\) là \emph{speedup} (hệ số tăng tốc), \(E_p\) là \emph{hiệu suất song song} (efficiency).
+Lý tưởng \(S_p = p\), \(E_p = 1\). Báo cáo luôn so sánh với bản tuần tự để tránh ``thổi phồng''
+speedup: một thuật toán song song chậm khi chạy 1 luồng có thể có \(T_1/T_p\) đẹp nhưng vẫn chậm
+hơn bản tuần tự.
+
+\section{Giới hạn của tăng tốc}
+\label{sec:laws}
+
+\subsection{Định luật Amdahl và Gustafson}
+
+Nếu một phần \(f\) của chương trình buộc phải chạy tuần tự, định luật
+Amdahl~\cite{amdahl1967} cho
+\begin{equation}
+  S_p \;\le\; \frac{1}{f + (1-f)/p} \;\xrightarrow{p\to\infty}\; \frac{1}{f}.
+  \label{eq:amdahl}
+\end{equation}
+Với scan chia khối (\cref{sec:alg-blocked}), phần tuần tự là việc quét \(p\) tổng khối, có chi
+phí \(\Oh(p)\) so với \(\Oh(n)\) của toàn bộ, tức \(f \approx p/n\) -- không đáng kể với \(n\) lớn.
+Như vậy theo Amdahl, scan gần như song song hóa hoàn toàn được. Định luật
+Gustafson~\cite{gustafson1988} xét bài toán có kích thước tăng theo \(p\) (weak scaling) và cho
+\(S_p = p - f(p-1)\), lạc quan hơn nữa.
+
+Tuy nhiên, cả hai định luật chỉ xét \emph{số phép tính}. Như phần tiếp theo chỉ ra, với scan
+yếu tố quyết định lại là \emph{lượng dữ liệu phải di chuyển}.
+
+\subsection{Mô hình roofline}
+\label{sec:roofline}
+
+Mô hình roofline~\cite{williams2009} đặc trưng một chương trình bằng \emph{cường độ tính toán}
+(arithmetic intensity) \(I\) = số phép toán / số byte trao đổi với bộ nhớ chính, và chặn trên
+hiệu năng đạt được:
+\begin{equation}
+  P \;\le\; \min\bigl(P_{\text{peak}},\; I \times \beta\bigr),
+  \label{eq:roofline}
+\end{equation}
+trong đó \(P_{\text{peak}}\) là hiệu năng tính toán đỉnh và \(\beta\) là băng thông bộ nhớ.
+Chương trình có \(I\) nhỏ nằm ở vùng ``mái nghiêng'' -- \emph{giới hạn bởi băng thông}
+(memory-bound): thêm nhân cũng không nhanh hơn khi băng thông đã bão hòa.
+
+Với scan trên số nguyên 64 bit, mỗi phần tử cần ít nhất 1 phép cộng, đọc 8 byte và ghi 8 byte,
+nên
+\[
+  I_{\text{scan}} \le \frac{1}{16}\ \text{phép cộng/byte} \approx 0{,}06.
+\]
+Một nhân CPU hiện đại thực hiện được hàng tỉ phép cộng mỗi giây, trong khi băng thông DRAM của
+máy tính xách tay chỉ khoảng 15--60~GB/s. Tại \(I = 0{,}06\), băng thông \(15\)~GB/s chỉ ``nuôi''
+được khoảng \(10^9\) phần tử/s -- mức mà \emph{một} nhân đã đạt tới. Hệ quả quan trọng:
+\begin{quote}
+\itshape Với dữ liệu lớn hơn bộ nhớ đệm, thời gian scan bị chặn dưới bởi
+\(T \ge 16n/\beta\); speedup tối đa đạt được xấp xỉ \(\beta_{\text{đa luồng}}/\beta_{\text{đơn
+luồng}}\), chứ không phải \(p\).
+\end{quote}
+Để có mốc băng thông thực tế, báo cáo đo kernel \emph{copy} song song (\(y_i = x_i\), cũng
+16~byte/phần tử, tương tự STREAM-copy~\cite{mccalpin1995}): đây là ``trần'' mà không thuật toán
+scan nào có thể vượt qua khi dữ liệu nằm ngoài cache.
+
+\section{Chuẩn lập trình OpenMP}
+\label{sec:openmp}
+
+OpenMP~\cite{openmp52,chapman2008} là chuẩn lập trình song song cho bộ nhớ chia sẻ, gồm các chỉ
+thị biên dịch (\code{\#pragma omp}), hàm thư viện (\code{omp\_*}) và biến môi trường
+(\code{OMP\_*}). Ưu điểm lớn của OpenMP là cho phép song song hóa \emph{tăng dần} một chương
+trình tuần tự: bỏ các chỉ thị đi, chương trình vẫn đúng.
+
+\subsection{Mô hình fork--join}
+
+Chương trình bắt đầu với một luồng chính. Gặp vùng \omp{parallel}, luồng chính tạo (\emph{fork})
+một nhóm \(p\) luồng cùng thực thi khối lệnh; cuối vùng, các luồng đồng bộ và hợp lại
+(\emph{join}) thành một (\cref{fig:forkjoin}). Thư viện \code{libgomp} giữ lại nhóm luồng giữa
+các vùng song song nên chi phí fork--join chỉ vài micro giây, nhưng vẫn đáng kể khi lặp lại nhiều
+lần với dữ liệu nhỏ.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=1cm,y=0.55cm,>=Stealth,thick]
+  \draw[->] (0,0) -- (2,0) node[midway,above]{\small tuần tự};
+  \foreach \y in {1.5,0.5,-0.5,-1.5}{
+    \draw[husblue] (2,0) -- (2.6,\y) -- (6.4,\y) -- (7,0);
+  }
+  \node[husblue] at (4.5,2.3) {\small vùng \code{parallel} (\(p = 4\) luồng)};
+  \node at (2,-2.6) {\small fork};
+  \node at (7,-2.6) {\small join (barrier)};
+  \draw[->] (7,0) -- (9,0) node[midway,above]{\small tuần tự};
+\end{tikzpicture}
+\caption{Mô hình fork--join của OpenMP.}
+\label{fig:forkjoin}
+\end{figure}
+
+\subsection{Các chỉ thị sử dụng trong đề tài}
+
+\begin{table}[H]
+\centering
+\caption{Các cấu trúc OpenMP được dùng để cài đặt scan.}
+\label{tab:omp-constructs}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabularx}{\textwidth}{>{\ttfamily\small}p{4.6cm}X}
+\toprule
+\textnormal{\textbf{Cấu trúc}} & \textbf{Ý nghĩa} \\
+\midrule
+parallel & Tạo nhóm luồng; mọi luồng thực thi khối lệnh. \\
+for schedule(static) & Chia vòng lặp thành \(p\) đoạn liên tiếp bằng nhau; rào chắn ngầm định
+ở cuối. \\
+for \dots{} nowait & Bỏ rào chắn ngầm định ở cuối vòng \code{for}. \\
+barrier & Rào chắn tường minh: mọi luồng chờ nhau tại điểm này. \\
+single & Chỉ một luồng thực thi khối lệnh; các luồng khác chờ ở cuối. \\
+simd & Yêu cầu vector hóa vòng lặp (AVX2: 4 số int64 mỗi lệnh). \\
+reduction(+:s) & Mỗi luồng có bản sao riêng của \code{s}, cộng dồn ở cuối. \\
+reduction(inscan,+:s) + scan inclusive(s) & Chỉ thị scan chuẩn của OpenMP 5.0: trình biên dịch
+tự sinh thuật toán scan song song. \\
+omp\_get\_thread\_num(), omp\_get\_num\_threads() & Chỉ số luồng và số luồng trong nhóm -- dùng
+để tự chia dữ liệu theo khối. \\
+omp\_get\_wtime() & Đồng hồ thời gian thực độ phân giải cao, dùng để đo hiệu năng. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Chỉ thị \texttt{scan} của OpenMP 5.0}
+
+Từ phiên bản 5.0 (2018), OpenMP hỗ trợ trực tiếp phép scan qua mệnh đề
+\code{reduction(inscan, op: var)} trên vòng lặp và chỉ thị \code{\#pragma omp scan
+inclusive(var)} (hoặc \code{exclusive}), chia thân vòng lặp thành pha ``cập nhật'' trước chỉ
+thị và pha ``sử dụng'' sau chỉ thị (\cref{lst:omp-scan-intro}). Lập trình viên chỉ khai báo ý
+định; việc chọn thuật toán thuộc về trình biên dịch.
+
+\begin{lstlisting}[caption={Inclusive scan bằng chỉ thị chuẩn OpenMP 5.0.},label={lst:omp-scan-intro}]
+elem_t s = 0;
+#pragma omp parallel for reduction(inscan, +:s)
+for (size_t i = 0; i < n; i++) {
+    s += in[i];                 // pha cập nhật
+    #pragma omp scan inclusive(s)
+    out[i] = s;                 // pha sử dụng
+}
+\end{lstlisting}
+
+Chuẩn quy định một số ràng buộc: không được dùng \code{schedule} cùng \code{reduction(inscan)},
+và thân vòng lặp có đúng một chỉ thị \code{scan}. Hiệu năng của cách tiếp cận này được đánh giá
+ở \cref{ch:experiments}.
+
+\section{Kiến trúc CPU đa nhân và các yếu tố ảnh hưởng hiệu năng}
+\label{sec:arch}
+
+\subsection{Phân cấp bộ nhớ}
+
+CPU hiện đại có nhiều cấp bộ nhớ đệm giữa nhân và DRAM: L1 (vài chục KiB, độ trễ khoảng 1~ns),
+L2 (vài trăm KiB đến vài MiB, khoảng 3--5~ns) và L3 dùng chung (vài MiB đến vài chục MiB,
+khoảng 10--20~ns), trong khi DRAM có độ trễ khoảng 80--100~ns~\cite{hennessy2019}. Dữ liệu
+được trao đổi theo \emph{dòng cache} (cache line) 64~byte. Hai hệ quả với scan:
+\begin{itemize}
+  \item \textbf{Truy cập tuần tự là tốt nhất}: bộ nạp trước (prefetcher) phần cứng nhận ra mẫu
+        truy cập liên tiếp và nạp trước dữ liệu, che giấu độ trễ. Truy cập với bước nhảy lớn
+        (như thuật toán Blelloch ở các tầng cao của cây) chỉ dùng 8 byte trong mỗi dòng 64 byte
+        được nạp, lãng phí 7/8 băng thông.
+  \item \textbf{Dữ liệu vừa cache thì nhanh hơn nhiều}: khi tổng kích thước mảng vào và ra nhỏ
+        hơn L3, băng thông khả dụng cao hơn DRAM nhiều lần và mỗi nhân có L1/L2 riêng, nên
+        speedup có thể gần tuyến tính.
+\end{itemize}
+
+\subsection{False sharing}
+
+Khi hai luồng ghi vào hai biến \emph{khác nhau} nằm trên cùng một dòng cache, giao thức nhất
+quán cache (MESI) buộc dòng đó liên tục bị chuyển qua lại giữa các nhân -- hiện tượng
+\emph{false sharing}. Trong scan chia khối, mảng \code{sums[p]} chứa tổng khối của các luồng là
+ứng viên điển hình: 8 phần tử int64 liên tiếp nằm cùng một dòng 64 byte. Cách khắc phục là
+\emph{đệm} (padding) mỗi phần tử ra đủ 64 byte -- vấn đề tương tự \emph{bank conflict} trong
+shared memory của GPU, mà Harris và cộng sự giải quyết bằng macro
+\code{CONFLICT\_FREE\_OFFSET}~\cite{harris2007}.
+
+\subsection{CPU lai: P-core và E-core}
+
+Từ thế hệ thứ 12, Intel dùng kiến trúc lai: \emph{P-core} hiệu năng cao (có Hyper-Threading,
+2 luồng/nhân) và \emph{E-core} tiết kiệm điện (1 luồng/nhân, xung nhịp và cache thấp hơn).
+CPU thực nghiệm Intel Core i5-1335U có 2 P-core và 8 E-core, tổng 12 luồng
+(\cref{sec:exp-env}). Điều này ảnh hưởng tới song song hóa:
+\begin{itemize}
+  \item \textbf{Mất cân bằng tải}: chia đều dữ liệu (\code{schedule(static)}) khiến luồng chạy
+        trên E-core xong chậm hơn; tại mỗi barrier mọi luồng phải chờ luồng chậm nhất.
+  \item \textbf{Hyper-Threading}: hai luồng trên cùng P-core chia sẻ đơn vị thực thi và cache
+        L1/L2; với bài toán memory-bound, luồng thứ hai gần như không thêm băng thông.
+  \item \textbf{Số luồng tối ưu} vì vậy thường nhỏ hơn số luồng logic.
+\end{itemize}
+
+\subsection{First-touch và quản lý trang}
+
+Hệ điều hành cấp phát trang nhớ vật lý tại lần ghi \emph{đầu tiên} (first-touch). Nếu đo ngay
+lần đầu dùng một mảng mới, kết quả sẽ gồm cả chi phí lỗi trang (page fault). Vì vậy mọi mảng
+trong thực nghiệm đều được khởi tạo song song trước khi đo, kèm vài lần chạy làm nóng (warm-up).
+Trên hệ thống NUMA nhiều socket, first-touch còn quyết định dữ liệu nằm ở nút nhớ nào; máy thực
+nghiệm chỉ có một socket nên yếu tố này không đáng kể.
+
+\section{Ứng dụng của scan}
+\label{sec:applications}
+
+\Cref{tab:apps} tóm tắt các ứng dụng tiêu biểu được Blelloch~\cite{blelloch1990} và Harris và
+cộng sự~\cite{harris2007} trình bày.
+
+\begin{table}[H]
+\centering
+\caption{Một số ứng dụng tiêu biểu của scan.}
+\label{tab:apps}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3.5cm}>{\centering\arraybackslash}p{1.9cm}X}
+\toprule
+\textbf{Ứng dụng} & \textbf{Phép \(\oplus\)} & \textbf{Ý tưởng} \\
+\midrule
+Stream compaction & \(+\) & Scan trên mảng cờ 0/1 cho ra vị trí đích của phần tử được giữ lại
+(\cref{sec:exp-app}). \\
+Radix sort & \(+\) & Mỗi lượt theo một bit: scan trên cờ bit để tính vị trí mới (phép
+\emph{split}). \\
+Quicksort song song & \(+\) & Phân hoạch quanh chốt bằng scan; dùng \emph{segmented scan} cho
+nhiều đoạn cùng lúc. \\
+Line-of-sight & \(\max\) & Một điểm nhìn thấy được nếu góc của nó lớn hơn max-prescan của các góc
+phía trước. \\
+Hệ truy hồi tuyến tính & hợp hàm affine & \(x_i = a_i x_{i-1} + b_i\) giải bằng scan với phép
+hợp \((a,b)\circ(c,d) = (ac,\, bc + d)\). \\
+Cộng số lớn & lan truyền nhớ & Lan truyền bit nhớ giữa các chữ số. \\
+Summed-area table & \(+\) & Scan theo hàng rồi theo cột; lọc ảnh với cửa sổ bất kỳ trong
+\(\Oh(1)\). \\
+Cấp phát động & \(+\) & Mỗi luồng yêu cầu \(k_i\) phần tử; prescan cho ra địa chỉ bắt đầu. \\
+\bottomrule
+\end{tabularx}
+\end{table}

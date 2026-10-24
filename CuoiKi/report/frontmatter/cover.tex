@@ -1,0 +1,50 @@
+% ---------------- Trang bìa ----------------
+\begin{titlepage}
+\newgeometry{left=2.5cm,right=2.5cm,top=2cm,bottom=2cm}
+\begin{tikzpicture}[remember picture,overlay]
+  \draw[husblue,line width=2.5pt]
+    ($(current page.north west)+(1.5cm,-1.3cm)$) rectangle ($(current page.south east)+(-1.5cm,1.3cm)$);
+  \draw[husblue,line width=0.6pt]
+    ($(current page.north west)+(1.65cm,-1.45cm)$) rectangle ($(current page.south east)+(-1.65cm,1.45cm)$);
+\end{tikzpicture}
+\centering
+\setstretch{1.15}
+{\large ĐẠI HỌC QUỐC GIA HÀ NỘI}\\[2pt]
+{\large\bfseries TRƯỜNG ĐẠI HỌC KHOA HỌC TỰ NHIÊN}\\[2pt]
+{\normalsize KHOA TOÁN – CƠ – TIN HỌC}\\[2pt]
+\rule{5cm}{0.6pt}
+
+\vspace{1.2cm}
+\includegraphics[height=4.2cm]{logoHUS.jpg}
+
+\vspace{1.0cm}
+{\large\bfseries BÁO CÁO CUỐI KỲ}\\[4pt]
+{\large Môn học: \textbf{TÍNH TOÁN SONG SONG}}
+
+\vspace{1.0cm}
+{\color{husblue}\LARGE\bfseries PARALLEL PREFIX SUM USING OPENMP:\\[4pt]
+IMPLEMENTATION AND PERFORMANCE EVALUATION}\\[8pt]
+{\large\itshape (Tính tổng tiền tố song song bằng OpenMP:\\ cài đặt và đánh giá hiệu năng)}
+
+\vfill
+\begin{tabular}{@{}ll@{}}
+\textbf{Giảng viên hướng dẫn:} & Nguyễn Hải Vinh \\
+                              & Mạc Đăng Trường \\[8pt]
+\textbf{Nhóm sinh viên thực hiện:} & \\
+\end{tabular}
+
+\vspace{4pt}
+\begin{tabular}{clc}
+\toprule
+\textbf{STT} & \textbf{Họ và tên} & \textbf{Mã sinh viên} \\
+\midrule
+1 & Bùi Xuân Chung & 23001838 \\
+2 & Lê Văn Cường   & 23001842 \\
+3 & Đào Ngọc Cường & 23001841 \\
+\bottomrule
+\end{tabular}
+
+\vspace{1.4cm}
+{\large Hà Nội, tháng 12 năm 2026}
+\restoregeometry
+\end{titlepage}

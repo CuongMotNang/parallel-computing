@@ -1,0 +1,68 @@
+\babel@toc {vietnamese}{}\relax 
+\contentsline {chapter}{Lời cảm ơn}{i}{chapter*.1}%
+\contentsline {chapter}{Tóm tắt}{ii}{chapter*.2}%
+\contentsline {chapter}{Bảng phân công công việc}{iii}{chapter*.3}%
+\contentsline {chapter}{Danh mục từ viết tắt và thuật ngữ}{vii}{chapter*.8}%
+\contentsline {chapter}{\numberline {1}Giới thiệu}{1}{chapter.1}%
+\contentsline {section}{\numberline {1.1}Bối cảnh}{1}{section.1.1}%
+\contentsline {section}{\numberline {1.2}Phát biểu bài toán}{1}{section.1.2}%
+\contentsline {paragraph}{Đầu vào.}{1}{paragraph*.10}%
+\contentsline {paragraph}{Đầu ra.}{1}{paragraph*.11}%
+\contentsline {paragraph}{Yêu cầu.}{2}{paragraph*.12}%
+\contentsline {section}{\numberline {1.3}Mục tiêu và phạm vi}{2}{section.1.3}%
+\contentsline {section}{\numberline {1.4}Đóng góp của nhóm}{2}{section.1.4}%
+\contentsline {section}{\numberline {1.5}Cấu trúc báo cáo}{2}{section.1.5}%
+\contentsline {chapter}{\numberline {2}Cơ sở lý thuyết}{3}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Phép tính tổng tiền tố}{3}{section.2.1}%
+\contentsline {paragraph}{Vai trò của tính kết hợp.}{3}{paragraph*.13}%
+\contentsline {paragraph}{Vấn đề với số thực.}{3}{paragraph*.14}%
+\contentsline {paragraph}{Thuật toán tuần tự.}{3}{paragraph*.15}%
+\contentsline {section}{\numberline {2.2}Mô hình phân tích thuật toán song song}{4}{section.2.2}%
+\contentsline {subsection}{\numberline {2.2.1}Mô hình PRAM}{4}{subsection.2.2.1}%
+\contentsline {subsection}{\numberline {2.2.2}Work, span và định lý Brent}{4}{subsection.2.2.2}%
+\contentsline {subsection}{\numberline {2.2.3}Speedup và hiệu suất}{5}{subsection.2.2.3}%
+\contentsline {section}{\numberline {2.3}Giới hạn của tăng tốc}{5}{section.2.3}%
+\contentsline {subsection}{\numberline {2.3.1}Định luật Amdahl và Gustafson}{5}{subsection.2.3.1}%
+\contentsline {subsection}{\numberline {2.3.2}Mô hình roofline}{5}{subsection.2.3.2}%
+\contentsline {section}{\numberline {2.4}Chuẩn lập trình OpenMP}{6}{section.2.4}%
+\contentsline {subsection}{\numberline {2.4.1}Mô hình fork--join}{6}{subsection.2.4.1}%
+\contentsline {subsection}{\numberline {2.4.2}Các chỉ thị sử dụng trong đề tài}{6}{subsection.2.4.2}%
+\contentsline {subsection}{\numberline {2.4.3}Chỉ thị \texttt {scan} của OpenMP 5.0}{7}{subsection.2.4.3}%
+\contentsline {section}{\numberline {2.5}Kiến trúc CPU đa nhân và các yếu tố ảnh hưởng hiệu năng}{7}{section.2.5}%
+\contentsline {subsection}{\numberline {2.5.1}Phân cấp bộ nhớ}{7}{subsection.2.5.1}%
+\contentsline {subsection}{\numberline {2.5.2}False sharing}{7}{subsection.2.5.2}%
+\contentsline {subsection}{\numberline {2.5.3}CPU lai: P-core và E-core}{7}{subsection.2.5.3}%
+\contentsline {subsection}{\numberline {2.5.4}First-touch và quản lý trang}{8}{subsection.2.5.4}%
+\contentsline {section}{\numberline {2.6}Ứng dụng của scan}{8}{section.2.6}%
+\contentsline {chapter}{\numberline {3}Thuật toán song song cho tổng tiền tố}{9}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Thuật toán Hillis--Steele}{9}{section.3.1}%
+\contentsline {subsection}{\numberline {3.1.1}Ý tưởng}{9}{subsection.3.1.1}%
+\contentsline {subsection}{\numberline {3.1.2}Mã giả và vấn đề cài đặt tại chỗ}{9}{subsection.3.1.2}%
+\contentsline {subsection}{\numberline {3.1.3}Phân tích}{10}{subsection.3.1.3}%
+\contentsline {section}{\numberline {3.2}Thuật toán work-efficient của Blelloch}{10}{section.3.2}%
+\contentsline {subsection}{\numberline {3.2.1}Ý tưởng: hai lượt quét trên cây nhị phân cân bằng}{10}{subsection.3.2.1}%
+\contentsline {subsection}{\numberline {3.2.2}Tính đúng đắn}{11}{subsection.3.2.2}%
+\contentsline {subsection}{\numberline {3.2.3}Phân tích}{12}{subsection.3.2.3}%
+\contentsline {paragraph}{Nhược điểm trên CPU.}{12}{paragraph*.22}%
+\contentsline {section}{\numberline {3.3}Scan chia khối cho trường hợp \(n \gg p\)}{12}{section.3.3}%
+\contentsline {subsection}{\numberline {3.3.1}Ý tưởng}{12}{subsection.3.3.1}%
+\contentsline {subsection}{\numberline {3.3.2}Phân tích}{13}{subsection.3.3.2}%
+\contentsline {paragraph}{Lưu lượng bộ nhớ.}{13}{paragraph*.24}%
+\contentsline {paragraph}{Biến thể scan-then-propagate.}{13}{paragraph*.25}%
+\contentsline {subsection}{\numberline {3.3.3}Cải tiến: chia tile vừa bộ nhớ đệm}{13}{subsection.3.3.3}%
+\contentsline {section}{\numberline {3.4}Chỉ thị \texttt {scan} của OpenMP}{14}{section.3.4}%
+\contentsline {section}{\numberline {3.5}So sánh các thuật toán}{14}{section.3.5}%
+\contentsline {chapter}{\numberline {4}Cài đặt bằng OpenMP}{15}{chapter.4}%
+\contentsline {section}{\numberline {4.1}Kiến trúc mã nguồn}{15}{section.4.1}%
+\contentsline {paragraph}{Giao diện thống nhất.}{15}{paragraph*.29}%
+\contentsline {paragraph}{Cấp phát bộ nhớ.}{16}{paragraph*.30}%
+\contentsline {section}{\numberline {4.2}Cài đặt các phiên bản}{16}{section.4.2}%
+\contentsline {subsection}{\numberline {4.2.1}Hillis--Steele}{16}{subsection.4.2.1}%
+\contentsline {chapter}{\numberline {5}Thực nghiệm và đánh giá}{17}{chapter.5}%
+\contentsline {section}{\numberline {5.1}Môi trường}{17}{section.5.1}%
+\contentsline {section}{\numberline {5.2}Strong}{17}{section.5.2}%
+\contentsline {section}{\numberline {5.3}Block}{17}{section.5.3}%
+\contentsline {section}{\numberline {5.4}App}{17}{section.5.4}%
+\contentsline {chapter}{\numberline {6}Kết luận và hướng phát triển}{18}{chapter.6}%
+\contentsline {chapter}{\numberline {A}Mã nguồn chính}{19}{appendix.A}%
+\contentsline {chapter}{\numberline {B}Số liệu thực nghiệm}{24}{appendix.B}%

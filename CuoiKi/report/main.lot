@@ -1,0 +1,13 @@
+\babel@toc {vietnamese}{}\relax 
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {2.1}{\ignorespaces Các cấu trúc OpenMP được dùng để cài đặt scan.}}{6}{table.caption.17}%
+\contentsline {table}{\numberline {2.2}{\ignorespaces Một số ứng dụng tiêu biểu của scan.}}{8}{table.caption.18}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {3.1}{\ignorespaces So sánh lý thuyết các thuật toán scan (\(n\) phần tử int64, \(p\) luồng, \(B\) kích thước khối). Lưu lượng DRAM tính cho dữ liệu lớn hơn cache.}}{14}{table.caption.27}%
+\addvspace {10\p@ }
+\contentsline {table}{\numberline {4.1}{\ignorespaces Các tệp mã nguồn.}}{15}{table.caption.28}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }

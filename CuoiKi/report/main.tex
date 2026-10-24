@@ -1,0 +1,41 @@
+% =====================================================================
+%  Báo cáo cuối kỳ – Tính toán song song
+%  Parallel Prefix Sum Using OpenMP: Implementation and Performance Evaluation
+%  Biên dịch:  latexmk -xelatex main.tex
+% =====================================================================
+\documentclass[a4paper,13pt,oneside]{extreport}
+
+\input{preamble}
+
+\begin{document}
+
+% ---------------- Phần đầu (đánh số La Mã) ----------------
+\pagenumbering{roman}
+\input{frontmatter/cover}
+\input{frontmatter/acknowledgement}
+\input{frontmatter/abstract}
+\input{frontmatter/contribution}
+
+\tableofcontents
+\listoffigures
+\listoftables
+\input{frontmatter/abbreviations}
+
+% ---------------- Nội dung chính ----------------
+\cleardoublepage
+\pagenumbering{arabic}
+\input{chapters/ch1_introduction}
+\input{chapters/ch2_background}
+\input{chapters/ch3_algorithms}
+\input{chapters/ch4_implementation}
+\input{chapters/ch5_experiments}
+\input{chapters/ch6_conclusion}
+
+% ---------------- Phần cuối ----------------
+\printbibliography[heading=bibintoc,title={Tài liệu tham khảo}]
+
+\appendix
+\input{appendix/appA_code}
+\input{appendix/appB_data}
+
+\end{document}

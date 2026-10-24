@@ -1,0 +1,14 @@
+\begin{tabular}{lrrrrr}
+\toprule
+Phiên bản & $p=1$ & $p=2$ & $p=4$ & $p=8$ & $p=12$ \\
+\midrule
+Tuần tự & \multicolumn{5}{c}{79.2 ms} \\
+\midrule
+Hillis–Steele & 2303.4 (0.03$\times$) & 2082.3 (0.04$\times$) & 1892.6 (0.04$\times$) & 2067.4 (0.04$\times$) & 1896.3 (0.04$\times$) \\
+Blelloch & 771.1 (0.10$\times$) & 764.6 (0.10$\times$) & 700.0 (0.11$\times$) & 700.8 (0.11$\times$) & 861.2 (0.09$\times$) \\
+Blocked & 212.5 (0.37$\times$) & 112.1 (0.71$\times$) & 98.3 (0.81$\times$) & 82.9 (0.96$\times$) & 86.6 (0.91$\times$) \\
+Blocked-opt & 82.5 (0.96$\times$) & 65.7 (1.20$\times$) & 71.0 (1.12$\times$) & 61.3 (1.29$\times$) & 87.9 (0.90$\times$) \\
+omp scan & 281.4 (0.28$\times$) & 192.0 (0.41$\times$) & 176.8 (0.45$\times$) & 183.2 (0.43$\times$) & 183.8 (0.43$\times$) \\
+Copy (mốc băng thông) & 70.9 (1.12$\times$) & 70.0 (1.13$\times$) & 58.9 (1.34$\times$) & 72.6 (1.09$\times$) & 72.3 (1.10$\times$) \\
+\bottomrule
+\end{tabular}
