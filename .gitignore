@@ -1,0 +1,6 @@
+_preview/
+__pycache__/
+*.exe
+*.o
+sum
+~$*.pptx
