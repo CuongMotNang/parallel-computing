@@ -1,0 +1,13 @@
+date: 2026-10-24T16:17:49+00:00
+kernel: 6.18.54.1-microsoft-standard-WSL2
+CPU(s):                                  12
+Model name:                              13th Gen Intel(R) Core(TM) i5-1335U
+Thread(s) per core:                      2
+Core(s) per socket:                      6
+L1d cache:                               288 KiB (6 instances)
+L2 cache:                                7.5 MiB (6 instances)
+L3 cache:                                12 MiB (1 instance)
+               total        used        free      shared  buff/cache   available
+Mem:           7.6Gi       615Mi       5.9Gi       4.1Mi       1.3Gi       7.0Gi
+gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0
+CFLAGS: -O3 -march=native -std=gnu11 -fopenmp
