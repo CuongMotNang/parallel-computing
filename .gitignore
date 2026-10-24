@@ -4,3 +4,8 @@ __pycache__/
 *.o
 sum
 ~$*.pptx
+
+# Cuoi ki
+CuoiKi/build/
+CuoiKi/TaiLieu/*.pdf
+CuoiKi/TaiLieu/_*
